@@ -1,0 +1,65 @@
+	processor 6502
+
+	include "header.dasm"
+	include "nes_defs.dasm"
+        
+        seg Code
+        org $8000
+reset:
+
+	lda #(BG_ENABLE)
+        sta PPU_MASK
+        lda #(NMI_ENABLE)
+        sta PPU_CTRL
+        
+        ; draw palette
+        lda #>PPU_BG_PAL
+        sta PPU_ADDR
+        lda #<PPU_BG_PAL
+        sta PPU_ADDR
+        
+        ; bg
+        lda #$0f
+        sta PPU_DATA
+        
+        lda #$01
+        sta PPU_DATA
+        
+        lda #$06
+        sta PPU_DATA
+        
+        lda #$09
+        sta PPU_DATA
+        
+_loop:
+        
+	jmp _loop
+
+nmi:        
+        ;;  goto current tile
+        lda #>NT_0
+        sta PPU_ADDR
+        lda 0
+        sta PPU_ADDR
+        
+        ; reset tile
+        lda #0
+        sta PPU_DATA
+        
+        ; draw next tile
+        lda #1
+        sta PPU_DATA
+        
+        inc 0
+irq:
+	rti
+
+	seg Vectors
+	org $fffa
+        .word nmi
+        .word reset
+        .word irq
+        
+        org $10000
+        incbin "tiles.chr"
+        incbin "tiles.chr"

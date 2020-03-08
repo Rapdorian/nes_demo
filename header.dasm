@@ -1,0 +1,15 @@
+
+NES_PRG_BANKS = 2
+NES_CHR_BANKS = 1
+NES_MIRRORING = 0
+NES_MAPPER = 0
+
+        seg Header
+        org $7ff0
+
+	byte "NES", $1a ; header
+        byte NES_PRG_BANKS
+        byte NES_CHR_BANKS
+        byte NES_MIRRORING|(NES_MAPPER<<4)
+        byte NES_MAPPER&$f0
+        byte 0,0,0,0,0,0,0,0 ; reserved, set to zero
