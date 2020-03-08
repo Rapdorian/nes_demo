@@ -3,11 +3,16 @@
 	include "header.dasm"
 	include "nes_defs.dasm"
         
+        seg.u ZEROPAGE
+        org $00
+tile_lo:	word
+tile_hi:	word
+        
         seg Code
         org $8000
 reset:
-
-	lda #(BG_ENABLE)
+	; enable bg rendering and nmi interrupt
+	lda #(BG_ENABLE | BG_COL_ENABLE)
         sta PPU_MASK
         lda #(NMI_ENABLE)
         sta PPU_CTRL
@@ -18,16 +23,17 @@ reset:
         lda #<PPU_BG_PAL
         sta PPU_ADDR
         
-        ; bg
+        ; set nametable ptr
+        lda #$20
+        sta tile_hi
+        
+        ; write palette
         lda #$0f
         sta PPU_DATA
-        
         lda #$01
         sta PPU_DATA
-        
         lda #$06
         sta PPU_DATA
-        
         lda #$09
         sta PPU_DATA
         
@@ -37,9 +43,9 @@ _loop:
 
 nmi:        
         ;;  goto current tile
-        lda #>NT_0
+        lda tile_hi
         sta PPU_ADDR
-        lda 0
+        lda tile_lo
         sta PPU_ADDR
         
         ; reset tile
@@ -47,18 +53,45 @@ nmi:
         sta PPU_DATA
         
         ; draw next tile
-        lda #1
+        lda #$A
+        sta PPU_DATA
+        lda #$4
+        sta PPU_DATA
+        lda #$2
         sta PPU_DATA
         
-        inc 0
+        lda #0
+        sta PPU_SCROLL
+        sta PPU_SCROLL
+        
+        ; 16 bit add
+        clc
+        lda tile_lo
+        adc #1
+        sta tile_lo
+        lda tile_hi
+        adc #0
+        sta tile_hi
+        
+        ; return if (1100) = $2400 reset to $2000
+        lda tile_hi
+        cmp #$24
+        bne _return
+        lda tile_lo
+        cmp #00
+        bne _return
+        ; reset nt ptr
+        lda #$20
+        sta tile_hi
+_return:
 irq:
 	rti
 
 	seg Vectors
 	org $fffa
-        .word nmi
-        .word reset
-        .word irq
+        word nmi
+        word reset
+        word irq
         
         org $10000
         incbin "tiles.chr"
