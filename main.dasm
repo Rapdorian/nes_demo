@@ -5,12 +5,12 @@
         
         seg.u ZEROPAGE
         org $00
-tile_lo:	word
-tile_hi:	word
-        
+position: byte
+buttons: byte
         seg Code
         org $8000
-reset:
+        
+reset:	subroutine
 	; enable bg rendering and nmi interrupt
 	lda #(BG_ENABLE | BG_COL_ENABLE)
         sta PPU_MASK
@@ -23,10 +23,6 @@ reset:
         lda #<PPU_BG_PAL
         sta PPU_ADDR
         
-        ; set nametable ptr
-        lda #$20
-        sta tile_hi
-        
         ; write palette
         lda #$0f
         sta PPU_DATA
@@ -37,54 +33,139 @@ reset:
         lda #$09
         sta PPU_DATA
         
-_loop:
+        ; start at pos 1
+        lda #1
+        sta position
         
-	jmp _loop
-
-nmi:        
-        ;;  goto current tile
-        lda tile_hi
+        ; enable APU
+	lda #PULSEA_ENABLE
+        sta APU_STATUS
+                
+.loop:
+        
+	jmp .loop
+        
+draw_char: subroutine
+	; goto top line
+        lda #$22
         sta PPU_ADDR
-        lda tile_lo
+        lda position
         sta PPU_ADDR
         
-        ; reset tile
-        lda #0
+        ; draw tiles
+        lda #$E0
+        sta PPU_DATA
+        lda #$E2
         sta PPU_DATA
         
-        ; draw next tile
-        lda #$A
-        sta PPU_DATA
-        lda #$4
-        sta PPU_DATA
-        lda #$2
-        sta PPU_DATA
+        ; goto bottom line
+        lda #$22
+        sta PPU_ADDR
         
-        lda #0
-        sta PPU_SCROLL
-        sta PPU_SCROLL
-        
-        ; 16 bit add
         clc
-        lda tile_lo
-        adc #1
-        sta tile_lo
-        lda tile_hi
-        adc #0
-        sta tile_hi
+        lda #32
+        adc position
+        sta PPU_ADDR
         
-        ; return if (1100) = $2400 reset to $2000
-        lda tile_hi
-        cmp #$24
-        bne _return
-        lda tile_lo
-        cmp #00
-        bne _return
-        ; reset nt ptr
-        lda #$20
-        sta tile_hi
-_return:
-irq:
+        ; draw tiles
+        lda #$E1
+        sta PPU_DATA
+        lda #$E3
+        sta PPU_DATA
+        rts
+        
+clear_char: subroutine
+	; goto top line
+        lda #$22
+        sta PPU_ADDR
+        lda position
+        sta PPU_ADDR
+        
+        ; draw tiles
+        lda #0
+        sta PPU_DATA
+        lda #0
+        sta PPU_DATA
+        
+        ; goto bottom line
+        lda #$22
+        sta PPU_ADDR
+        
+        clc
+        lda #32
+        adc position
+        sta PPU_ADDR
+        
+        ; draw tiles
+        lda #0
+        sta PPU_DATA
+        lda #0
+        sta PPU_DATA
+        rts
+        
+read_joypad: subroutine
+	lda #1
+        sta PAD_A
+        sta buttons
+        lsr
+        sta PAD_A
+.loop:
+	lda PAD_A
+        lsr
+        rol buttons
+        bcc .loop
+        rts
+
+play_beep:
+	; set frequency
+	lda #<279
+	sta PULSEA_PERIOD_LO
+        lda #>279
+        sta PULSEA_PERIOD_HI
+
+	; set volume
+        lda #(DC_50 | %1111)
+        sta PULSEA
+        rts
+        
+nmi:    subroutine
+	jsr read_joypad
+	jsr clear_char
+        
+        ; input
+        lda buttons
+        and #(BUTTON_LEFT)
+        beq .check_right
+        dec position
+.check_right:
+	lda buttons
+        and #(BUTTON_RIGHT)
+        beq .end_if
+        inc position
+.end_if:
+        jsr draw_char
+        
+        lda #0
+        sta PPU_SCROLL
+        sta PPU_SCROLL
+                
+        lda position
+        cmp #30
+        bcc .check_left_wall
+        lda #29
+        sta position
+        jsr play_beep
+        
+.check_left_wall:
+        lda position
+        cmp #0
+        bne .return
+        lda #1
+        sta position
+        jsr play_beep
+        
+.return:
+irq:	subroutine
 	rti
 
 	seg Vectors
